@@ -65,6 +65,14 @@
 			<version>${springdoc.version}</version>
 		</dependency>
 
+		<!-- Docker Compose Support -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-docker-compose</artifactId>
+			<scope>runtime</scope>
+			<optional>true</optional>
+		</dependency>
+
 		<!-- Database Drivers -->
 		<dependency>
 			<groupId>org.postgresql</groupId>

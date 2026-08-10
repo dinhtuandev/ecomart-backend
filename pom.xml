@@ -8,11 +8,11 @@
 		<version>3.3.5</version>
 		<relativePath/> <!-- lookup parent from repository -->
 	</parent>
-	<groupId>com.techhub</groupId>
-	<artifactId>techhub-backend</artifactId>
+	<groupId>com.ecomart</groupId>
+	<artifactId>ecomart-backend</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
-	<name>techhub-backend</name>
-	<description>TechHub E-Commerce REST API Monolith</description>
+	<name>ecomart-backend</name>
+	<description>EcoMart E-Commerce REST API Monolith</description>
 
 	<properties>
 		<java.version>17</java.version>
@@ -73,6 +73,14 @@
 			<optional>true</optional>
 		</dependency>
 
+		<!-- Load .env file (dotenv) into Spring Environment -->
+		<dependency>
+			<groupId>me.paulschwarz</groupId>
+			<artifactId>springboot3-dotenv</artifactId>
+			<version>5.1.0</version>
+			<optional>true</optional>
+		</dependency>
+
 		<!-- Database Drivers -->
 		<dependency>
 			<groupId>org.postgresql</groupId>
@@ -84,7 +92,11 @@
 			<artifactId>mssql-jdbc</artifactId>
 			<scope>runtime</scope>
 		</dependency>
-
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <scope>runtime</scope>
+        </dependency>
 		<!-- Utilities -->
 		<dependency>
 			<groupId>org.projectlombok</groupId>

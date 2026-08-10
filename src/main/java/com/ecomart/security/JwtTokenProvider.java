@@ -1,4 +1,4 @@
-package com.techhub.security;
+package com.ecomart.security;
 
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;

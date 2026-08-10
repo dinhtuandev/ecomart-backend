@@ -1,10 +1,10 @@
-package com.techhub;
+package com.ecomart;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 
 @SpringBootTest
-class TechhubBackendApplicationTests {
+class EcomartBackendApplicationTests {
 
 	@Test
 	void contextLoads() {

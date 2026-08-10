@@ -1,13 +1,13 @@
-package com.techhub;
+package com.ecomart;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 @SpringBootApplication
-public class TechhubBackendApplication {
+public class EcomartBackendApplication {
 
 	public static void main(String[] args) {
-		SpringApplication.run(TechhubBackendApplication.class, args);
+		SpringApplication.run(EcomartBackendApplication.class, args);
 	}
 
 }

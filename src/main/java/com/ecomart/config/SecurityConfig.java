@@ -1,6 +1,6 @@
-package com.techhub.config;
+package com.ecomart.config;
 
-import com.techhub.security.JwtAuthenticationFilter;
+import com.ecomart.security.JwtAuthenticationFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;

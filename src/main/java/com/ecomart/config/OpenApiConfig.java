@@ -1,4 +1,4 @@
-package com.techhub.config;
+package com.ecomart.config;
 
 import io.swagger.v3.oas.models.Components;
 import io.swagger.v3.oas.models.OpenAPI;
@@ -18,12 +18,12 @@ public class OpenApiConfig {
     public OpenAPI customOpenAPI() {
         return new OpenAPI()
                 .info(new Info()
-                        .title("TechHub REST API Specifications")
-                        .description("Tài liệu API RESTful cho hệ thống Thương mại điện tử B2C TechHub (Spring Boot 3.3.x)")
+                        .title("EcoMart REST API Specifications")
+                        .description("Tài liệu API RESTful cho hệ thống Thương mại điện tử B2C EcoMart (Spring Boot 3.3.x)")
                         .version("1.0.0")
                         .contact(new Contact()
-                                .name("TechHub Team")
-                                .email("support@techhub.vn")))
+                                .name("EcoMart Team")
+                                .email("support@ecomart.vn")))
                 .addSecurityItem(new SecurityRequirement().addList(SECURITY_SCHEME_NAME))
                 .components(new Components()
                         .addSecuritySchemes(SECURITY_SCHEME_NAME,

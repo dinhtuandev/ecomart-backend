@@ -1,4 +1,4 @@
-package com.techhub.security;
+package com.ecomart.security;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;

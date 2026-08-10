@@ -1,6 +1,6 @@
-package com.techhub.exception;
+package com.ecomart.exception;
 
-import com.techhub.dto.response.ApiResponse;
+import com.ecomart.dto.response.ApiResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;

@@ -13,6 +13,8 @@
 5. [🚀 Chạy ứng dụng](#-chạy-ứng-dụng)
 6. [📚 Tài liệu API](#-tài-liệu-api)
 7. [🧪 Kiểm thử](#-kiểm-thử)
+8. [🐳 Chạy với Docker](#-chạy-với-docker)
+9. [🏗️ Cấu trúc thư mục](#️-cấu-trúc-thư-mục)
 
 ---
 
@@ -154,6 +156,28 @@ Sau khi chạy, ứng dụng listen tại **`http://localhost:8081`**.
 
 ---
 
+## 🐳 Chạy với Docker
+
+> 📖 Hướng dẫn chi tiết: xem [docs/DOCKER.md](docs/DOCKER.md)
+
+```bash
+# Build image + khởi động PostgreSQL & ứng dụng
+# (lần đầu build lâu do phải tải Maven dependencies)
+docker compose up -d --build
+
+# Xem log theo dõi
+# docker compose logs -f app
+
+# Dừng toàn bộ (giữ dữ liệu DB trong volume)
+# docker compose down
+```
+
+- 🌐 Ứng dụng: <http://localhost:8081> · 📄 Swagger: <http://localhost:8081/swagger-ui.html>
+- Khi chạy bằng Docker, ứng dụng dùng **PostgreSQL** (profile `docker`), dữ liệu lưu trong volume `postgres_data`.
+- Chạy trực tiếp ngoài Docker (IDE / `./mvnw.cmd spring-boot:run`) vẫn dùng **H2 in-memory** như trước, không cần Docker.
+
+---
+
 ## 🏗️ Cấu trúc thư mục
 
 ```text
@@ -164,7 +188,11 @@ ecomart-backend/
 │   ├── dto/             # Request/Response DTOs
 │   └── exception/       # Global exception handler
 ├── src/main/resources/
-│   └── application.yml  # Cấu hình chính (DB, JWT, docs)
-├── compose.yaml         # PostgreSQL cho production
+│   ├── application.yml          # Cấu hình chính (DB, JWT, docs)
+│   └── application-docker.yml   # Profile "docker" (PostgreSQL)
+├── Dockerfile           # Build image ứng dụng (multi-stage)
+├── .dockerignore        # Loại trừ file không cần thiết khi build
+├── compose.yaml         # PostgreSQL + app (Docker Compose)
+├── docs/DOCKER.md       # Hướng dẫn chạy bằng Docker
 └── pom.xml              # Maven configuration
 ```

@@ -1,0 +1,31 @@
+# ── Git ──
+.git
+.gitignore
+
+# ── Build output ──
+target/
+*.class
+
+# ── IDE ──
+.idea/
+*.iml
+*.iws
+.ipr
+.vscode/
+.settings/
+.classpath
+.project
+.sts4-cache
+
+# ── Environment / Secrets ──
+.env
+.env.local
+
+# ── Tài liệu (không cần trong build context) ──
+*.md
+HELP.md
+
+# ── Docker ──
+compose.yaml
+Dockerfile
+.dockerignore

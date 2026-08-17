@@ -1,56 +1,71 @@
-name: ecomart
-
 services:
-  # ── PostgreSQL (database) ───────────────────────────────────
+  # ------------------------------------------------------------
+  # OPTION 1: PostgreSQL Database (MẶC ĐỊNH ĐANG DÙNG)
+  # ------------------------------------------------------------
   postgres:
     image: 'postgres:16-alpine'
     container_name: ecomart-postgres
     environment:
-      - 'POSTGRES_DB=${POSTGRES_DB:-ecomart_db}'
-      - 'POSTGRES_USER=${POSTGRES_USER:-postgres}'
-      - 'POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgrespassword}'
+      POSTGRES_DB: ecomart_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgrespassword
     ports:
-      - '${POSTGRES_PORT:-5432}:5432'
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - '5432:5432'
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-ecomart_db}']
-      interval: 10s
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ecomart_db"]
+      interval: 5s
       timeout: 5s
       retries: 5
-      start_period: 10s
-    restart: unless-stopped
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
 
-  # ── EcoMart Backend (Spring Boot app) ──────────────────────
-  app:
+  # ------------------------------------------------------------
+  # OPTION 2: Microsoft SQL Server (DÀNH CHO TEAM NẾU CẦN DÙNG SQL SERVER)
+  # Hướng dẫn chuyển đổi:
+  # 1. Bỏ comment toàn bộ khối service 'mssql' bên dưới.
+  # 2. Trong service 'backend', bỏ comment các dòng SQL Server datasource & comment dòng Postgres.
+  # 3. Đổi 'depends_on' bên dưới thành 'mssql'.
+  # ------------------------------------------------------------
+  # mssql:
+  #   image: 'mcr.microsoft.com/mssql/server:2022-latest'
+  #   container_name: ecomart-mssql
+  #   environment:
+  #     ACCEPT_EULA: 'Y'
+  #     MSSQL_SA_PASSWORD: 'YourStrong@Passw0rd'
+  #     MSSQL_PID: 'Developer'
+  #   ports:
+  #     - '1433:1433'
+  #   volumes:
+  #     - mssql_data:/var/opt/mssql/data
+
+  # ------------------------------------------------------------
+  # SPRING BOOT BACKEND SERVICE
+  # ------------------------------------------------------------
+  backend:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: ecomart-backend
-    environment:
-      # Kích hoạt profile "docker" -> dùng PostgreSQL thay vì H2
-      SPRING_PROFILES_ACTIVE: docker
-      DB_HOST: postgres
-      DB_PORT: '5432'
-      DB_NAME: ${POSTGRES_DB:-ecomart_db}
-      DB_USERNAME: ${POSTGRES_USER:-postgres}
-      DB_PASSWORD: ${POSTGRES_PASSWORD:-postgrespassword}
-      # JWT (có thể override qua .env)
-      APP_JWT_SECRET: ${APP_JWT_SECRET:-9a4f2c8d7e1b5a3f6c0d9e8f7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d1e0f9a8b}
-      APP_JWT_EXPIRATION_MS: ${APP_JWT_EXPIRATION_MS:-86400000}
-      TZ: UTC
     ports:
-      - '${APP_PORT:-8081}:8081'
+      - '8081:8081'
+    environment:
+      SERVER_PORT: 8081
+      # --- Đang dùng PostgreSQL (Mặc định) ---
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/ecomart_db
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgrespassword
+
+      # --- Cấu hình khi team chuyển sang dùng SQL Server ---
+      # SPRING_DATASOURCE_URL: jdbc:sqlserver://mssql:1433;databaseName=ecomart_db;encrypt=true;trustServerCertificate=true
+      # SPRING_DATASOURCE_USERNAME: sa
+      # SPRING_DATASOURCE_PASSWORD: YourStrong@Passw0rd
+
+      APP_JWT_SECRET: 9a4f2c8d7e1b5a3f6c0d9e8f7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d1e0f9a8b
+      APP_JWT_EXPIRATION_MS: 86400000
     depends_on:
       postgres:
         condition: service_healthy
-    healthcheck:
-      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://localhost:8081/swagger-ui.html']
-      interval: 30s
-      timeout: 5s
-      retries: 5
-      start_period: 45s
-    restart: unless-stopped
 
 volumes:
   postgres_data:
+  # mssql_data:

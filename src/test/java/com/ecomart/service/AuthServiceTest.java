@@ -1,11 +1,16 @@
 package com.ecomart.service;
 
+import com.ecomart.dto.request.ForgotPasswordRequest;
 import com.ecomart.dto.request.LoginRequest;
 import com.ecomart.dto.request.RegisterRequest;
+import com.ecomart.dto.request.ResetPasswordRequest;
 import com.ecomart.dto.response.AuthResponse;
+import com.ecomart.entity.PasswordResetToken;
 import com.ecomart.entity.Role;
 import com.ecomart.entity.User;
 import com.ecomart.exception.BadRequestException;
+import com.ecomart.exception.ForbiddenException;
+import com.ecomart.exception.ResourceNotFoundException;
 import com.ecomart.exception.UnauthorizedException;
 import com.ecomart.repository.PasswordResetTokenRepository;
 import com.ecomart.repository.RoleRepository;
@@ -21,6 +26,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
+import java.time.LocalDateTime;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -146,5 +152,115 @@ class AuthServiceTest {
         assertThatThrownBy(() -> authService.login(request))
                 .isInstanceOf(UnauthorizedException.class)
                 .hasMessageContaining("Email hoặc mật khẩu không chính xác");
+    }
+
+    @Test
+    @DisplayName("Login thất bại khi tài khoản bị khóa (isActive = false)")
+    void login_AccountInactive_ThrowsForbiddenException() {
+        testUser.setActive(false);
+        LoginRequest request = LoginRequest.builder()
+                .email("test@example.com")
+                .password("MatKhau123")
+                .build();
+
+        when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(testUser));
+        when(passwordEncoder.matches("MatKhau123", "encodedPassword")).thenReturn(true);
+
+        assertThatThrownBy(() -> authService.login(request))
+                .isInstanceOf(ForbiddenException.class)
+                .hasMessageContaining("Tài khoản của bạn đã bị khóa");
+    }
+
+    @Test
+    @DisplayName("Forgot password thành công khi email tồn tại")
+    void forgotPassword_Success() {
+        ForgotPasswordRequest request = ForgotPasswordRequest.builder()
+                .email("test@example.com")
+                .build();
+
+        when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(testUser));
+
+        authService.forgotPassword(request);
+
+        verify(passwordResetTokenRepository, times(1)).save(any(PasswordResetToken.class));
+    }
+
+    @Test
+    @DisplayName("Forgot password thất bại khi email không tồn tại")
+    void forgotPassword_EmailNotFound_ThrowsException() {
+        ForgotPasswordRequest request = ForgotPasswordRequest.builder()
+                .email("notfound@example.com")
+                .build();
+
+        when(userRepository.findByEmail("notfound@example.com")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> authService.forgotPassword(request))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessageContaining("Tài khoản với email này không tồn tại");
+    }
+
+    @Test
+    @DisplayName("Reset password thành công khi token hợp lệ")
+    void resetPassword_Success() {
+        ResetPasswordRequest request = ResetPasswordRequest.builder()
+                .token("valid-uuid-token")
+                .newPassword("MatKhauMoi123")
+                .build();
+
+        PasswordResetToken resetToken = PasswordResetToken.builder()
+                .id(1L)
+                .token("valid-uuid-token")
+                .user(testUser)
+                .expiresAt(LocalDateTime.now().plusMinutes(10))
+                .isUsed(false)
+                .build();
+
+        when(passwordResetTokenRepository.findByToken("valid-uuid-token")).thenReturn(Optional.of(resetToken));
+        when(passwordEncoder.encode("MatKhauMoi123")).thenReturn("newEncodedPassword");
+
+        authService.resetPassword(request);
+
+        assertThat(testUser.getPasswordHash()).isEqualTo("newEncodedPassword");
+        assertThat(resetToken.isUsed()).isTrue();
+        verify(userRepository, times(1)).save(testUser);
+        verify(passwordResetTokenRepository, times(1)).save(resetToken);
+    }
+
+    @Test
+    @DisplayName("Reset password thất bại khi token không tồn tại")
+    void resetPassword_InvalidToken_ThrowsException() {
+        ResetPasswordRequest request = ResetPasswordRequest.builder()
+                .token("invalid-token")
+                .newPassword("MatKhauMoi123")
+                .build();
+
+        when(passwordResetTokenRepository.findByToken("invalid-token")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> authService.resetPassword(request))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("Token đặt lại mật khẩu không hợp lệ");
+    }
+
+    @Test
+    @DisplayName("Reset password thất bại khi token đã hết hạn")
+    void resetPassword_ExpiredToken_ThrowsException() {
+        ResetPasswordRequest request = ResetPasswordRequest.builder()
+                .token("expired-token")
+                .newPassword("MatKhauMoi123")
+                .build();
+
+        PasswordResetToken expiredToken = PasswordResetToken.builder()
+                .id(1L)
+                .token("expired-token")
+                .user(testUser)
+                .expiresAt(LocalDateTime.now().minusMinutes(5))
+                .isUsed(false)
+                .build();
+
+        when(passwordResetTokenRepository.findByToken("expired-token")).thenReturn(Optional.of(expiredToken));
+
+        assertThatThrownBy(() -> authService.resetPassword(request))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("Token đặt lại mật khẩu đã hết hạn");
     }
 }

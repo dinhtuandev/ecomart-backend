@@ -1,6 +1,9 @@
 package com.ecomart.dto.response;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.*;
+
+import java.time.LocalDateTime;
 
 @Data
 @Builder
@@ -11,7 +14,11 @@ public class UserResponse {
     private Long id;
     private String fullName;
     private String email;
-    private String role;
     private String phoneNumber;
-    private boolean active;
+    private String role;
+
+    @JsonProperty("isActive")
+    private boolean isActive;
+
+    private LocalDateTime createdAt;
 }

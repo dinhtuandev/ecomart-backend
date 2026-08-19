@@ -135,7 +135,8 @@ public class AuthServiceImpl implements AuthService {
                 .email(user.getEmail())
                 .role(user.getRole().getName())
                 .phoneNumber(user.getPhoneNumber())
-                .active(user.isActive())
+                .isActive(user.isActive())
+                .createdAt(user.getCreatedAt())
                 .build();
     }
 }

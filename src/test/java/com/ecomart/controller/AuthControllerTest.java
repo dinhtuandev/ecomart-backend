@@ -56,7 +56,7 @@ class AuthControllerTest {
                 .email("test@example.com")
                 .role("CUSTOMER")
                 .phoneNumber("0901234567")
-                .active(true)
+                .isActive(true)
                 .build();
 
         authResponse = AuthResponse.builder()

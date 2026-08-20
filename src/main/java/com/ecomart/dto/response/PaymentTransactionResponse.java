@@ -15,6 +15,7 @@ import java.time.LocalDateTime;
 public class PaymentTransactionResponse {
 
     private Long id;
+    private String paymentRef;
     private String gateway;
     private BigDecimal amount;
     private String gatewayTransactionNo;

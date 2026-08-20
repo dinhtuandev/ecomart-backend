@@ -53,6 +53,8 @@ class OrderServiceTest {
     private UserRepository userRepository;
     @Mock
     private InventoryRepository inventoryRepository;
+    @Mock
+    private PaymentService paymentService;
 
     @InjectMocks
     private OrderServiceImpl orderService;
@@ -160,12 +162,31 @@ class OrderServiceTest {
         when(inventoryRepository.findByProductId(100L)).thenReturn(Optional.of(inventory));
         when(orderRepository.save(any(Order.class))).thenReturn(order);
         when(paymentTransactionRepository.save(any(PaymentTransaction.class))).thenReturn(PaymentTransaction.builder().build());
+        when(paymentService.createVNPayPaymentUrl(any(), any(), any())).thenReturn("https://sandbox.vnpayment.vn/paymentv2/vpcpay.html?test=1");
 
         CreateOrderResponse response = orderService.createOrder(1L, request);
 
         assertThat(response).isNotNull();
         assertThat(response.getPaymentUrl()).isNotNull();
         assertThat(response.getPaymentUrl()).contains("sandbox.vnpayment.vn");
+        verify(paymentTransactionRepository, times(1)).save(any(PaymentTransaction.class));
+    }
+
+    @Test
+    @DisplayName("Retry payment tạo một PaymentTransaction PENDING mới với paymentRef độc nhất")
+    void retryPayment_CreatesNewPendingPaymentTransactionWithUniquePaymentRef_WhenPreviousPaymentFailed() {
+        order.setPaymentMethod(PaymentMethod.VNPAY);
+        order.setStatus(OrderStatus.PENDING);
+        order.setPaymentStatus(PaymentStatus.UNPAID);
+
+        when(orderRepository.findById(1000L)).thenReturn(Optional.of(order));
+        when(paymentTransactionRepository.save(any(PaymentTransaction.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(paymentService.createVNPayPaymentUrl(any(), any(), any())).thenReturn("https://sandbox.vnpayment.vn/paymentv2/vpcpay.html?retry=1");
+
+        CreateOrderResponse response = orderService.retryPayment(1L, 1000L);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getPaymentUrl()).contains("retry=1");
         verify(paymentTransactionRepository, times(1)).save(any(PaymentTransaction.class));
     }
 

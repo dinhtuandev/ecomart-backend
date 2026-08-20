@@ -50,6 +50,11 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/v1/categories/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/brands/**").permitAll()
 
+                        // Payment Callback Endpoints
+                        .requestMatchers(HttpMethod.POST, "/api/v1/payments/vnpay/ipn").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/payments/vnpay/return").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/payments/sepay/webhook").permitAll()
+
                         // Swagger UI & OpenAPI Docs
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
 

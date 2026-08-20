@@ -5,15 +5,14 @@ import com.ecomart.dto.request.CreateOrderRequest;
 import com.ecomart.dto.request.UpdatePaymentStatusRequest;
 import com.ecomart.dto.response.*;
 import com.ecomart.entity.*;
-import com.ecomart.entity.enums.OrderStatus;
-import com.ecomart.entity.enums.PaymentMethod;
-import com.ecomart.entity.enums.PaymentStatus;
+import com.ecomart.entity.enums.*;
 import com.ecomart.exception.ConflictException;
 import com.ecomart.exception.ForbiddenException;
 import com.ecomart.exception.ResourceNotFoundException;
 import com.ecomart.exception.UnprocessableEntityException;
 import com.ecomart.repository.*;
 import com.ecomart.service.OrderService;
+import com.ecomart.service.PaymentService;
 import com.ecomart.specification.OrderSpecification;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -44,6 +43,7 @@ public class OrderServiceImpl implements OrderService {
     private final AddressRepository addressRepository;
     private final UserRepository userRepository;
     private final InventoryRepository inventoryRepository;
+    private final PaymentService paymentService;
 
     @Override
     @Transactional
@@ -132,17 +132,24 @@ public class OrderServiceImpl implements OrderService {
         // Handle online payment gateway transaction URL
         String paymentUrl = null;
         if (request.getPaymentMethod() != PaymentMethod.COD) {
+            String paymentRef = generatePaymentRef(orderCode);
+            PaymentGateway gateway = request.getPaymentMethod() == PaymentMethod.VNPAY ? PaymentGateway.VNPAY : PaymentGateway.SEPAY;
+
             PaymentTransaction transaction = PaymentTransaction.builder()
                     .order(savedOrder)
-                    .gateway(request.getPaymentMethod().name())
+                    .paymentRef(paymentRef)
+                    .gateway(gateway)
                     .amount(totalAmount)
-                    .status("PENDING")
+                    .status(PaymentTransactionStatus.PENDING)
                     .build();
             PaymentTransaction savedTx = paymentTransactionRepository.save(transaction);
             savedOrder.getPaymentTransactions().add(savedTx);
 
-            // Mock / dynamic payment gateway URL generator for online payments
-            paymentUrl = "https://sandbox.vnpayment.vn/paymentv2/vpcpay.html?orderCode=" + orderCode + "&amount=" + totalAmount;
+            if (gateway == PaymentGateway.VNPAY) {
+                paymentUrl = paymentService.createVNPayPaymentUrl(savedOrder, paymentRef, null);
+            } else {
+                paymentUrl = paymentService.createSePayQrUrl(savedOrder, paymentRef);
+            }
         }
 
         return CreateOrderResponse.builder()
@@ -230,16 +237,25 @@ public class OrderServiceImpl implements OrderService {
             throw new ConflictException("Đơn hàng này đã được thanh toán thành công");
         }
 
+        String paymentRef = generatePaymentRef(order.getOrderCode());
+        PaymentGateway gateway = order.getPaymentMethod() == PaymentMethod.VNPAY ? PaymentGateway.VNPAY : PaymentGateway.SEPAY;
+
         PaymentTransaction transaction = PaymentTransaction.builder()
                 .order(order)
-                .gateway(order.getPaymentMethod().name())
+                .paymentRef(paymentRef)
+                .gateway(gateway)
                 .amount(order.getTotalAmount())
-                .status("PENDING")
+                .status(PaymentTransactionStatus.PENDING)
                 .build();
-        paymentTransactionRepository.save(transaction);
-        order.getPaymentTransactions().add(transaction);
+        PaymentTransaction savedTx = paymentTransactionRepository.save(transaction);
+        order.getPaymentTransactions().add(savedTx);
 
-        String paymentUrl = "https://sandbox.vnpayment.vn/paymentv2/vpcpay.html?orderCode=" + order.getOrderCode() + "&amount=" + order.getTotalAmount();
+        String paymentUrl;
+        if (gateway == PaymentGateway.VNPAY) {
+            paymentUrl = paymentService.createVNPayPaymentUrl(order, paymentRef, null);
+        } else {
+            paymentUrl = paymentService.createSePayQrUrl(order, paymentRef);
+        }
 
         return CreateOrderResponse.builder()
                 .order(mapToOrderResponse(order))
@@ -391,6 +407,11 @@ public class OrderServiceImpl implements OrderService {
         return "EM-" + datePart + "-" + randomPart;
     }
 
+    private String generatePaymentRef(String orderCode) {
+        String suffix = UUID.randomUUID().toString().replace("-", "").substring(0, 12).toUpperCase();
+        return orderCode + "-P" + suffix;
+    }
+
     private String formatDeliveryAddress(Address address) {
         return address.getAddressDetail() + ", " + address.getWard() + ", " + address.getDistrict() + ", " + address.getProvince();
     }
@@ -417,10 +438,11 @@ public class OrderServiceImpl implements OrderService {
             for (PaymentTransaction tx : order.getPaymentTransactions()) {
                 txResponses.add(PaymentTransactionResponse.builder()
                         .id(tx.getId())
-                        .gateway(tx.getGateway())
+                        .paymentRef(tx.getPaymentRef())
+                        .gateway(tx.getGateway() != null ? tx.getGateway().name() : null)
                         .amount(tx.getAmount())
                         .gatewayTransactionNo(tx.getGatewayTransactionNo())
-                        .status(tx.getStatus())
+                        .status(tx.getStatus() != null ? tx.getStatus().name() : null)
                         .createdAt(tx.getCreatedAt())
                         .build());
             }

@@ -10,9 +10,17 @@
 ![Tests](https://img.shields.io/badge/Tests-220%20Passed%20(100%25)-brightgreen?style=for-the-badge&logo=junit5&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)
 
-<p align="center">
-  <b>Nền tảng Backend RESTful API Monolith cho Sàn Thương mại Điện tử B2C EcoMart — Chuyên kinh doanh sản phẩm tiêu dùng xanh và phát triển bền vững.</b>
-</p>
+1. [✨ Tính năng cốt lõi](#-tính-năng-cốt-lõi)
+2. [🧰 Tech Stack](#-tech-stack)
+3. [📋 Yêu cầu & Cài đặt](#-yêu-cầu--cài-đặt)
+4. [⚙️ Cấu hình môi trường](#️-cấu-hình-môi-trường)
+5. [🚀 Chạy ứng dụng](#-chạy-ứng-dụng)
+6. [📚 Tài liệu API](#-tài-liệu-api)
+7. [🧪 Kiểm thử](#-kiểm-thử)
+8. [🐳 Chạy với Docker](#-chạy-với-docker)
+9. [🏗️ Cấu trúc thư mục](#️-cấu-trúc-thư-mục)
+
+---
 
 [Tài liệu API Swagger](#-tài-liệu-api--swagger-ui) • [Cài đặt & Khởi động](#-cài-đặt--khởi-động-nhanh) • [Cấu hình Môi trường](#️-cấu-hình-biến-môi-trường-env) • [Kiểm thử Tự động](#-kiểm-thử-tự-động--chất-lượng-mã-nguồn)
 
@@ -224,30 +232,45 @@ Dự án đạt tỷ lệ bao phủ kiểm thử cao, kiểm tra đầy đủ c�
 
 ---
 
-## 📂 Cấu trúc Dự án
+## 🐳 Chạy với Docker
+
+> 📖 Hướng dẫn chi tiết: xem [docs/DOCKER.md](docs/DOCKER.md)
+
+```bash
+# Build image + khởi động PostgreSQL & ứng dụng
+# (lần đầu build lâu do phải tải Maven dependencies)
+docker compose up -d --build
+
+# Xem log theo dõi
+# docker compose logs -f app
+
+# Dừng toàn bộ (giữ dữ liệu DB trong volume)
+# docker compose down
+```
+
+- 🌐 Ứng dụng: <http://localhost:8081> · 📄 Swagger: <http://localhost:8081/swagger-ui.html>
+- Khi chạy bằng Docker, ứng dụng dùng **PostgreSQL** (profile `docker`), dữ liệu lưu trong volume `postgres_data`.
+- Chạy trực tiếp ngoài Docker (IDE / `./mvnw.cmd spring-boot:run`) vẫn dùng **H2 in-memory** như trước, không cần Docker.
+
+---
+
+## 🏗️ Cấu trúc thư mục
 
 ```text
 ecomart-backend/
-├── src/
-│   ├── main/
-│   │   ├── java/com/ecomart/
-│   │   │   ├── config/          # Cấu hình Security, CORS, OpenAPI, Payment, Async
-│   │   │   ├── controller/      # REST API Controllers (V1)
-│   │   │   ├── dto/             # Request & Response Data Transfer Objects
-│   │   │   ├── entity/          # JPA Entities & Enums
-│   │   │   ├── exception/       # Custom Exceptions & Global Exception Handler (429, 409, 404...)
-│   │   │   ├── repository/      # Spring Data JPA Repositories & JPQL Analytics Queries
-│   │   │   ├── security/        # JWT Token Provider, Auth Filter & UserPrincipal
-│   │   │   ├── service/         # Service Interfaces & Implementations (@Transactional)
-│   │   │   └── util/            # VNPay Hashing, Slug Generator & Helpers
-│   │   └── resources/
-│   │       ├── application.yml  # File cấu hình trung tâm (Mapping 100% từ .env)
-│   │       └── data.sql         # Seed data mẫu ban đầu (Roles, Admin, Categories...)
-│   └── test/                    # 220 Unit Tests & Integration Tests (MockMvc, Mockito, H2)
-├── .env.example                 # Template cấu hình mẫu chuẩn
-├── compose.yaml                 # Docker Compose (PostgreSQL cho production)
-├── pom.xml                      # Quản lý thư viện Maven
-└── README.md                    # Tài liệu hướng dẫn dự án
+├── src/main/java/com/ecomart/
+│   ├── config/          # Security, CORS, OpenAPI
+│   ├── security/        # JWT provider, filter, principal
+│   ├── dto/             # Request/Response DTOs
+│   └── exception/       # Global exception handler
+├── src/main/resources/
+│   ├── application.yml          # Cấu hình chính (DB, JWT, docs)
+│   └── application-docker.yml   # Profile "docker" (PostgreSQL)
+├── Dockerfile           # Build image ứng dụng (multi-stage)
+├── .dockerignore        # Loại trừ file không cần thiết khi build
+├── compose.yaml         # PostgreSQL + app (Docker Compose)
+├── docs/DOCKER.md       # Hướng dẫn chạy bằng Docker
+└── pom.xml              # Maven configuration
 ```
 
 ---

@@ -1,0 +1,22 @@
+# ============================================================
+#  Profile "docker" — dùng khi chạy ứng dụng TRONG Docker Compose.
+#  Kích hoạt bằng biến môi trường SPRING_PROFILES_ACTIVE=docker
+#  (đã set sẵn trong compose.yaml) hoặc --spring.profiles.active=docker.
+#
+#  Khác với mặc định (H2 in-memory), profile này kết nối PostgreSQL
+#  chạy trong container "postgres" của compose.yaml.
+# ============================================================
+spring:
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:postgres}:${DB_PORT:5432}/${DB_NAME:ecomart_db}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:postgrespassword}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.PostgreSQLDialect

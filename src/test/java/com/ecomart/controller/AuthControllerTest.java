@@ -1,10 +1,8 @@
 package com.ecomart.controller;
 
-import com.ecomart.dto.request.ForgotPasswordRequest;
-import com.ecomart.dto.request.LoginRequest;
-import com.ecomart.dto.request.RegisterRequest;
-import com.ecomart.dto.request.ResetPasswordRequest;
+import com.ecomart.dto.request.*;
 import com.ecomart.dto.response.AuthResponse;
+import com.ecomart.dto.response.ForgotPasswordResponse;
 import com.ecomart.dto.response.UserResponse;
 import com.ecomart.exception.UnauthorizedException;
 import com.ecomart.security.JwtAuthenticationFilter;
@@ -24,6 +22,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -47,10 +46,11 @@ class AuthControllerTest {
     private JwtAuthenticationFilter jwtAuthenticationFilter;
 
     private AuthResponse authResponse;
+    private UserResponse userResponse;
 
     @BeforeEach
     void setUp() {
-        UserResponse userResponse = UserResponse.builder()
+        userResponse = UserResponse.builder()
                 .id(1L)
                 .fullName("Nguyễn Văn A")
                 .email("test@example.com")
@@ -61,6 +61,7 @@ class AuthControllerTest {
 
         authResponse = AuthResponse.builder()
                 .accessToken("test-jwt-token")
+                .refreshToken("test-refresh-token")
                 .tokenType("Bearer")
                 .user(userResponse)
                 .build();
@@ -84,6 +85,7 @@ class AuthControllerTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.accessToken").value("test-jwt-token"))
+                .andExpect(jsonPath("$.data.refreshToken").value("test-refresh-token"))
                 .andExpect(jsonPath("$.data.user.email").value("test@example.com"));
     }
 
@@ -119,7 +121,8 @@ class AuthControllerTest {
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.accessToken").value("test-jwt-token"));
+                .andExpect(jsonPath("$.data.accessToken").value("test-jwt-token"))
+                .andExpect(jsonPath("$.data.refreshToken").value("test-refresh-token"));
     }
 
     @Test
@@ -142,19 +145,56 @@ class AuthControllerTest {
     }
 
     @Test
-    @DisplayName("POST /api/v1/auth/forgot-password trả về HTTP 200")
+    @DisplayName("POST /api/v1/auth/refresh-token trả về HTTP 200 khi cấp mới token thành công")
+    void refreshToken_Success_Returns200() throws Exception {
+        RefreshTokenRequest request = RefreshTokenRequest.builder()
+                .refreshToken("valid-refresh-token")
+                .build();
+
+        when(authService.refreshToken(any(RefreshTokenRequest.class))).thenReturn(authResponse);
+
+        mockMvc.perform(post("/api/v1/auth/refresh-token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.accessToken").value("test-jwt-token"))
+                .andExpect(jsonPath("$.data.refreshToken").value("test-refresh-token"));
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/auth/me trả về HTTP 200 thông tin user hiện tại")
+    void getCurrentUser_Returns200() throws Exception {
+        when(authService.getCurrentUser(any())).thenReturn(userResponse);
+
+        mockMvc.perform(get("/api/v1/auth/me")
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.email").value("test@example.com"))
+                .andExpect(jsonPath("$.data.fullName").value("Nguyễn Văn A"));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/auth/forgot-password trả về HTTP 200 kèm resetToken")
     void forgotPassword_Returns200() throws Exception {
         ForgotPasswordRequest request = ForgotPasswordRequest.builder()
                 .email("test@example.com")
                 .build();
 
-        doNothing().when(authService).forgotPassword(any(ForgotPasswordRequest.class));
+        ForgotPasswordResponse response = ForgotPasswordResponse.builder()
+                .message("Yêu cầu đặt lại mật khẩu đã được xử lý.")
+                .resetToken("mock-reset-token")
+                .build();
+
+        when(authService.forgotPassword(any(ForgotPasswordRequest.class))).thenReturn(response);
 
         mockMvc.perform(post("/api/v1/auth/forgot-password")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success").value(true));
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.resetToken").value("mock-reset-token"));
     }
 
     @Test

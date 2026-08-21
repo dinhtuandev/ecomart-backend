@@ -1,16 +1,17 @@
 package com.ecomart.controller;
 
-import com.ecomart.dto.request.ForgotPasswordRequest;
-import com.ecomart.dto.request.LoginRequest;
-import com.ecomart.dto.request.RegisterRequest;
-import com.ecomart.dto.request.ResetPasswordRequest;
+import com.ecomart.dto.request.*;
 import com.ecomart.dto.response.ApiResponse;
 import com.ecomart.dto.response.AuthResponse;
+import com.ecomart.dto.response.ForgotPasswordResponse;
+import com.ecomart.dto.response.UserResponse;
+import com.ecomart.security.UserPrincipal;
 import com.ecomart.service.AuthService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -33,10 +34,22 @@ public class AuthController {
         return ResponseEntity.ok(ApiResponse.success("Đăng nhập thành công.", response));
     }
 
+    @PostMapping("/refresh-token")
+    public ResponseEntity<ApiResponse<AuthResponse>> refreshToken(@Valid @RequestBody RefreshTokenRequest request) {
+        AuthResponse response = authService.refreshToken(request);
+        return ResponseEntity.ok(ApiResponse.success("Cấp mới token thành công.", response));
+    }
+
+    @GetMapping("/me")
+    public ResponseEntity<ApiResponse<UserResponse>> getCurrentUser(@AuthenticationPrincipal UserPrincipal principal) {
+        UserResponse response = authService.getCurrentUser(principal);
+        return ResponseEntity.ok(ApiResponse.success("Lấy thông tin tài khoản thành công.", response));
+    }
+
     @PostMapping("/forgot-password")
-    public ResponseEntity<ApiResponse<Void>> forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {
-        authService.forgotPassword(request);
-        return ResponseEntity.ok(ApiResponse.success("Yêu cầu đặt lại mật khẩu đã được xử lý. Vui lòng kiểm tra email.", null));
+    public ResponseEntity<ApiResponse<ForgotPasswordResponse>> forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {
+        ForgotPasswordResponse response = authService.forgotPassword(request);
+        return ResponseEntity.ok(ApiResponse.success("Yêu cầu đặt lại mật khẩu đã được xử lý.", response));
     }
 
     @PostMapping("/reset-password")

@@ -1,14 +1,14 @@
 package com.ecomart.service;
 
-import com.ecomart.dto.request.ForgotPasswordRequest;
-import com.ecomart.dto.request.LoginRequest;
-import com.ecomart.dto.request.RegisterRequest;
-import com.ecomart.dto.request.ResetPasswordRequest;
+import com.ecomart.dto.request.*;
 import com.ecomart.dto.response.AuthResponse;
+import com.ecomart.dto.response.ForgotPasswordResponse;
+import com.ecomart.dto.response.UserResponse;
 import com.ecomart.entity.PasswordResetToken;
 import com.ecomart.entity.Role;
 import com.ecomart.entity.User;
 import com.ecomart.exception.BadRequestException;
+import com.ecomart.exception.ConflictException;
 import com.ecomart.exception.ForbiddenException;
 import com.ecomart.exception.ResourceNotFoundException;
 import com.ecomart.exception.UnauthorizedException;
@@ -16,6 +16,7 @@ import com.ecomart.repository.PasswordResetTokenRepository;
 import com.ecomart.repository.RoleRepository;
 import com.ecomart.repository.UserRepository;
 import com.ecomart.security.JwtTokenProvider;
+import com.ecomart.security.UserPrincipal;
 import com.ecomart.service.impl.AuthServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -94,18 +95,21 @@ class AuthServiceTest {
         when(passwordEncoder.encode("MatKhau123")).thenReturn("encodedPassword");
         when(userRepository.save(any(User.class))).thenReturn(testUser);
         when(tokenProvider.generateToken(anyString(), anyLong(), anyString())).thenReturn("mockJwtToken");
+        when(tokenProvider.generateRefreshToken(anyString(), anyLong(), anyString())).thenReturn("mockRefreshToken");
+        when(tokenProvider.getJwtExpirationMs()).thenReturn(86400000L);
 
         AuthResponse response = authService.register(request);
 
         assertThat(response).isNotNull();
         assertThat(response.getAccessToken()).isEqualTo("mockJwtToken");
+        assertThat(response.getRefreshToken()).isEqualTo("mockRefreshToken");
         assertThat(response.getUser().getEmail()).isEqualTo("test@example.com");
         verify(userRepository, times(1)).save(any(User.class));
     }
 
     @Test
-    @DisplayName("Register thất bại khi email đã tồn tại")
-    void register_EmailAlreadyExists_ThrowsException() {
+    @DisplayName("Register ném ConflictException 409 khi email đã tồn tại")
+    void register_EmailAlreadyExists_ThrowsConflictException() {
         RegisterRequest request = RegisterRequest.builder()
                 .fullName("Nguyễn Văn A")
                 .email("test@example.com")
@@ -115,7 +119,7 @@ class AuthServiceTest {
         when(userRepository.existsByEmail("test@example.com")).thenReturn(true);
 
         assertThatThrownBy(() -> authService.register(request))
-                .isInstanceOf(BadRequestException.class)
+                .isInstanceOf(ConflictException.class)
                 .hasMessageContaining("Email đã được sử dụng");
     }
 
@@ -130,11 +134,14 @@ class AuthServiceTest {
         when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(testUser));
         when(passwordEncoder.matches("MatKhau123", "encodedPassword")).thenReturn(true);
         when(tokenProvider.generateToken("test@example.com", 10L, "CUSTOMER")).thenReturn("mockJwtToken");
+        when(tokenProvider.generateRefreshToken("test@example.com", 10L, "CUSTOMER")).thenReturn("mockRefreshToken");
+        when(tokenProvider.getJwtExpirationMs()).thenReturn(86400000L);
 
         AuthResponse response = authService.login(request);
 
         assertThat(response).isNotNull();
         assertThat(response.getAccessToken()).isEqualTo("mockJwtToken");
+        assertThat(response.getRefreshToken()).isEqualTo("mockRefreshToken");
         assertThat(response.getUser().getRole()).isEqualTo("CUSTOMER");
     }
 
@@ -172,6 +179,59 @@ class AuthServiceTest {
     }
 
     @Test
+    @DisplayName("Refresh token thành công khi refresh token hợp lệ")
+    void refreshToken_Success() {
+        RefreshTokenRequest request = RefreshTokenRequest.builder()
+                .refreshToken("valid-refresh-token")
+                .build();
+
+        when(tokenProvider.validateToken("valid-refresh-token")).thenReturn(true);
+        when(tokenProvider.getTokenType("valid-refresh-token")).thenReturn("REFRESH");
+        when(tokenProvider.getEmailFromToken("valid-refresh-token")).thenReturn("test@example.com");
+        when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(testUser));
+        when(tokenProvider.generateToken("test@example.com", 10L, "CUSTOMER")).thenReturn("newAccessToken");
+        when(tokenProvider.generateRefreshToken("test@example.com", 10L, "CUSTOMER")).thenReturn("newRefreshToken");
+        when(tokenProvider.getJwtExpirationMs()).thenReturn(86400000L);
+
+        AuthResponse response = authService.refreshToken(request);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getAccessToken()).isEqualTo("newAccessToken");
+        assertThat(response.getRefreshToken()).isEqualTo("newRefreshToken");
+    }
+
+    @Test
+    @DisplayName("Refresh token thất bại khi tài khoản bị khóa")
+    void refreshToken_ThrowsForbidden_WhenAccountInactive() {
+        testUser.setActive(false);
+        RefreshTokenRequest request = RefreshTokenRequest.builder()
+                .refreshToken("valid-refresh-token")
+                .build();
+
+        when(tokenProvider.validateToken("valid-refresh-token")).thenReturn(true);
+        when(tokenProvider.getTokenType("valid-refresh-token")).thenReturn("REFRESH");
+        when(tokenProvider.getEmailFromToken("valid-refresh-token")).thenReturn("test@example.com");
+        when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(testUser));
+
+        assertThatThrownBy(() -> authService.refreshToken(request))
+                .isInstanceOf(ForbiddenException.class)
+                .hasMessageContaining("Tài khoản của bạn đã bị khóa");
+    }
+
+    @Test
+    @DisplayName("Lấy thông tin tài khoản hiện tại getCurrentUser thành công")
+    void getCurrentUser_Success() {
+        UserPrincipal principal = UserPrincipal.create(10L, "test@example.com", "pass", "CUSTOMER", true);
+        when(userRepository.findById(10L)).thenReturn(Optional.of(testUser));
+
+        UserResponse response = authService.getCurrentUser(principal);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getEmail()).isEqualTo("test@example.com");
+        assertThat(response.getFullName()).isEqualTo("Nguyễn Văn A");
+    }
+
+    @Test
     @DisplayName("Forgot password thành công khi email tồn tại")
     void forgotPassword_Success() {
         ForgotPasswordRequest request = ForgotPasswordRequest.builder()
@@ -180,8 +240,10 @@ class AuthServiceTest {
 
         when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(testUser));
 
-        authService.forgotPassword(request);
+        ForgotPasswordResponse response = authService.forgotPassword(request);
 
+        assertThat(response).isNotNull();
+        assertThat(response.getResetToken()).isNotBlank();
         verify(passwordResetTokenRepository, times(1)).save(any(PasswordResetToken.class));
     }
 

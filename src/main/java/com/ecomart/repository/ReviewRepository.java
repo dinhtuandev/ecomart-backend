@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -30,4 +31,19 @@ public interface ReviewRepository extends JpaRepository<Review, Long>, JpaSpecif
 
     @Query("SELECT AVG(CAST(r.rating as double)) FROM Review r WHERE r.product.id = :productId AND r.isVisible = true")
     Double getAverageRatingByProductId(@Param("productId") Long productId);
+
+    long countByIsVisible(Boolean isVisible);
+
+    long countByRating(Integer rating);
+
+    @Query("SELECT AVG(CAST(r.rating as double)) FROM Review r WHERE r.isVisible = true")
+    Double getAverageRatingPlatform();
+
+    List<Review> findTop5ByRatingLessThanEqualAndIsVisibleTrueOrderByCreatedAtDesc(Integer maxRating);
+
+    @Query("SELECT r.product.id, r.product.name, AVG(CAST(r.rating as double)), COUNT(r.id) " +
+           "FROM Review r WHERE r.isVisible = true " +
+           "GROUP BY r.product.id, r.product.name " +
+           "ORDER BY AVG(CAST(r.rating as double)) ASC")
+    List<Object[]> findLowestRatedProducts(Pageable pageable);
 }

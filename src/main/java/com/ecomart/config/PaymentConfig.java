@@ -17,18 +17,18 @@ public class PaymentConfig {
     @Getter
     @Setter
     public static class VNPayProperties {
-        private String tmnCode = "DEMOVNPAY";
-        private String hashSecret = "DEMOHASHSECRET1234567890ABCDEF";
-        private String payUrl = "https://sandbox.vnpayment.vn/paymentv2/vpcpay.html";
-        private String returnUrl = "http://localhost:3000/checkout/payment-return";
+        private String tmnCode;
+        private String hashSecret;
+        private String payUrl;
+        private String returnUrl;
     }
 
     @Getter
     @Setter
     public static class SePayProperties {
-        private String apiKey = "DEMO_SEPAY_API_KEY_123456";
-        private String accountNumber = "0123456789";
-        private String bank = "MBBank";
-        private String qrUrlTemplate = "https://qr.sepay.vn/img?acc={acc}&bank={bank}&amount={amount}&des={des}";
+        private String apiKey;
+        private String accountNumber;
+        private String bank;
+        private String qrUrlTemplate;
     }
 }

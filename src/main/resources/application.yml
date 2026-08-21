@@ -10,9 +10,9 @@ spring:
       enabled: false
 
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/ecomart_db}
-    username: ${SPRING_DATASOURCE_USERNAME:postgres}
-    password: ${SPRING_DATASOURCE_PASSWORD:postgrespassword}
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
     driver-class-name: org.postgresql.Driver
 
   jpa:
@@ -28,28 +28,28 @@ spring:
     time-zone: UTC
     date-format: yyyy-MM-dd'T'HH:mm:ss'Z'
 
-# Resend Email Configuration
+# Resend Email Configuration (được nạp trực tiếp từ file .env)
 resend:
-  api-key: ${RESEND_API_KEY:}
-  from-email: ${RESEND_FROM_EMAIL:EcoMart <onboarding@resend.dev>}
+  api-key: ${RESEND_API_KEY}
+  from-email: ${RESEND_FROM_EMAIL}
 
-# Application Custom Properties
+# Application Custom Properties (được nạp trực tiếp từ file .env)
 app:
   jwt:
-    secret: ${APP_JWT_SECRET:9a4f2c8d7e1b5a3f6c0d9e8f7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d1e0f9a8b}
-    expiration-ms: ${APP_JWT_EXPIRATION_MS:86400000} # 24 hours
-    refresh-expiration-ms: ${APP_JWT_REFRESH_EXPIRATION_MS:604800000} # 7 days
+    secret: ${APP_JWT_SECRET}
+    expiration-ms: ${APP_JWT_EXPIRATION_MS}
+    refresh-expiration-ms: ${APP_JWT_REFRESH_EXPIRATION_MS}
   payment:
     vnpay:
-      tmn-code: ${VNPAY_TMN_CODE:DEMOVNPAY}
-      hash-secret: ${VNPAY_HASH_SECRET:DEMOHASHSECRET1234567890ABCDEF}
-      pay-url: ${VNPAY_PAY_URL:https://sandbox.vnpayment.vn/paymentv2/vpcpay.html}
-      return-url: ${VNPAY_RETURN_URL:http://localhost:3000/checkout/payment-return}
+      tmn-code: ${VNPAY_TMN_CODE}
+      hash-secret: ${VNPAY_HASH_SECRET}
+      pay-url: ${VNPAY_PAY_URL}
+      return-url: ${VNPAY_RETURN_URL}
     sepay:
-      api-key: ${SEPAY_API_KEY:DEMO_SEPAY_API_KEY_123456}
-      account-number: ${SEPAY_ACCOUNT_NUMBER:0123456789}
-      bank: ${SEPAY_BANK:MBBank}
-      qr-url-template: ${SEPAY_QR_TEMPLATE:https://qr.sepay.vn/img?acc={acc}&bank={bank}&amount={amount}&des={des}}
+      api-key: ${SEPAY_API_KEY}
+      account-number: ${SEPAY_ACCOUNT_NUMBER}
+      bank: ${SEPAY_BANK}
+      qr-url-template: ${SEPAY_QR_TEMPLATE}
 
 # OpenAPI / Swagger UI Configuration
 springdoc:

@@ -1,24 +1,22 @@
 package com.ecomart.service.impl;
 
 import com.ecomart.service.EmailService;
-import jakarta.mail.internet.MimeMessage;
-import lombok.RequiredArgsConstructor;
+import com.resend.Resend;
+import com.resend.services.emails.model.CreateEmailOptions;
+import com.resend.services.emails.model.CreateEmailResponse;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.mail.javamail.JavaMailSender;
-import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 @Service
 @Slf4j
-@RequiredArgsConstructor
 public class EmailServiceImpl implements EmailService {
 
-    private final ObjectProvider<JavaMailSender> mailSenderProvider;
+    @Value("${resend.api-key:}")
+    private String resendApiKey;
 
-    @Value("${spring.mail.username:no-reply@ecomart.com}")
+    @Value("${resend.from-email:onboarding@resend.dev}")
     private String fromEmail;
 
     @Async
@@ -33,7 +31,7 @@ public class EmailServiceImpl implements EmailService {
                 "Mã này có hiệu lực trong vòng 5 phút. Vui lòng không chia sẻ mã này cho bất kỳ ai."
         );
 
-        sendHtmlEmail(toEmail, subject, htmlContent, otpCode, "VERIFICATION");
+        sendEmailViaResend(toEmail, subject, htmlContent, otpCode, "VERIFICATION");
     }
 
     @Async
@@ -48,34 +46,34 @@ public class EmailServiceImpl implements EmailService {
                 "Mã này có hiệu lực trong vòng 15 phút. Nếu bạn không gửi yêu cầu này, vui lòng bỏ qua email."
         );
 
-        sendHtmlEmail(toEmail, subject, htmlContent, otpCode, "PASSWORD_RESET");
+        sendEmailViaResend(toEmail, subject, htmlContent, otpCode, "PASSWORD_RESET");
     }
 
-    private void sendHtmlEmail(String toEmail, String subject, String htmlContent, String otpCode, String type) {
-        JavaMailSender mailSender = mailSenderProvider.getIfAvailable();
-        if (mailSender == null) {
-            log.info("========== [EMAIL SIMULATION] ==========");
+    private void sendEmailViaResend(String toEmail, String subject, String htmlContent, String otpCode, String type) {
+        if (resendApiKey == null || resendApiKey.isBlank() || resendApiKey.startsWith("re_xxxx")) {
+            log.info("========== [RESEND SIMULATION] ==========");
             log.info("Type: {}", type);
             log.info("To: {}", toEmail);
             log.info("Subject: {}", subject);
             log.info("OTP Code: {}", otpCode);
-            log.info("========================================");
+            log.info("=========================================");
             return;
         }
 
         try {
-            MimeMessage message = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+            Resend resend = new Resend(resendApiKey);
 
-            helper.setFrom(fromEmail, "EcoMart Vietnam");
-            helper.setTo(toEmail);
-            helper.setSubject(subject);
-            helper.setText(htmlContent, true);
+            CreateEmailOptions params = CreateEmailOptions.builder()
+                    .from(fromEmail)
+                    .to(toEmail)
+                    .subject(subject)
+                    .html(htmlContent)
+                    .build();
 
-            mailSender.send(message);
-            log.info("Đã gửi email thành công tới {}", toEmail);
+            CreateEmailResponse response = resend.emails().send(params);
+            log.info("Đã gửi email thành công qua Resend tới {} (Email ID: {})", toEmail, response != null ? response.getId() : "N/A");
         } catch (Exception e) {
-            log.warn("Không thể gửi email thực tế tới {} (Lỗi: {}). Sử dụng chế độ DEV simulation. OTP: {}",
+            log.warn("Không thể gửi email thực tế qua Resend tới {} (Lỗi: {}). Sử dụng chế độ DEV fallback. OTP: {}",
                     toEmail, e.getMessage(), otpCode);
         }
     }

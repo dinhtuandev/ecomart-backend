@@ -28,11 +28,28 @@ spring:
     time-zone: UTC
     date-format: yyyy-MM-dd'T'HH:mm:ss'Z'
 
-# JWT Configuration
+# Resend Email Configuration
+resend:
+  api-key: ${RESEND_API_KEY:}
+  from-email: ${RESEND_FROM_EMAIL:EcoMart <onboarding@resend.dev>}
+
+# Application Custom Properties
 app:
   jwt:
     secret: ${APP_JWT_SECRET:9a4f2c8d7e1b5a3f6c0d9e8f7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d1e0f9a8b}
     expiration-ms: ${APP_JWT_EXPIRATION_MS:86400000} # 24 hours
+    refresh-expiration-ms: ${APP_JWT_REFRESH_EXPIRATION_MS:604800000} # 7 days
+  payment:
+    vnpay:
+      tmn-code: ${VNPAY_TMN_CODE:DEMOVNPAY}
+      hash-secret: ${VNPAY_HASH_SECRET:DEMOHASHSECRET1234567890ABCDEF}
+      pay-url: ${VNPAY_PAY_URL:https://sandbox.vnpayment.vn/paymentv2/vpcpay.html}
+      return-url: ${VNPAY_RETURN_URL:http://localhost:3000/checkout/payment-return}
+    sepay:
+      api-key: ${SEPAY_API_KEY:DEMO_SEPAY_API_KEY_123456}
+      account-number: ${SEPAY_ACCOUNT_NUMBER:0123456789}
+      bank: ${SEPAY_BANK:MBBank}
+      qr-url-template: ${SEPAY_QR_TEMPLATE:https://qr.sepay.vn/img?acc={acc}&bank={bank}&amount={amount}&des={des}}
 
 # OpenAPI / Swagger UI Configuration
 springdoc:

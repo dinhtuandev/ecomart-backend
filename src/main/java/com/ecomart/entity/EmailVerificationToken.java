@@ -32,6 +32,10 @@ public class EmailVerificationToken {
     @Column(name = "is_used", nullable = false)
     private boolean isUsed = false;
 
+    @Builder.Default
+    @Column(name = "failed_attempts", nullable = false)
+    private int failedAttempts = 0;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;

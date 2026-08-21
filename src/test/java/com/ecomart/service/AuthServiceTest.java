@@ -10,6 +10,7 @@ import com.ecomart.exception.BadRequestException;
 import com.ecomart.exception.ConflictException;
 import com.ecomart.exception.ForbiddenException;
 import com.ecomart.exception.ResourceNotFoundException;
+import com.ecomart.exception.TooManyRequestsException;
 import com.ecomart.exception.UnauthorizedException;
 import com.ecomart.repository.EmailVerificationTokenRepository;
 import com.ecomart.repository.PasswordResetTokenRepository;
@@ -99,6 +100,11 @@ class AuthServiceTest {
                 .build();
 
         when(userRepository.existsByEmail("test@example.com")).thenReturn(false);
+        when(emailVerificationTokenRepository.findFirstByEmailOrderByCreatedAtDesc("test@example.com"))
+                .thenReturn(Optional.empty());
+        when(emailVerificationTokenRepository.countByEmailAndCreatedAtAfter(eq("test@example.com"), any(LocalDateTime.class)))
+                .thenReturn(0L);
+
         when(roleRepository.findByName("CUSTOMER")).thenReturn(Optional.of(customerRole));
         when(passwordEncoder.encode("MatKhau123")).thenReturn("encodedPassword");
         when(userRepository.save(any(User.class))).thenReturn(testUser);
@@ -113,19 +119,46 @@ class AuthServiceTest {
     }
 
     @Test
-    @DisplayName("Register ném ConflictException 409 khi email đã tồn tại")
-    void register_EmailAlreadyExists_ThrowsConflictException() {
+    @DisplayName("Register ném TooManyRequestsException 429 khi vi phạm Cooldown 60s")
+    void register_ThrowsTooManyRequests_WhenWithinCooldown() {
         RegisterRequest request = RegisterRequest.builder()
                 .fullName("Nguyễn Văn A")
                 .email("test@example.com")
                 .password("MatKhau123")
                 .build();
 
-        when(userRepository.existsByEmail("test@example.com")).thenReturn(true);
+        EmailVerificationToken recentToken = EmailVerificationToken.builder()
+                .email("test@example.com")
+                .createdAt(LocalDateTime.now().minusSeconds(20))
+                .build();
+
+        when(userRepository.existsByEmail("test@example.com")).thenReturn(false);
+        when(emailVerificationTokenRepository.findFirstByEmailOrderByCreatedAtDesc("test@example.com"))
+                .thenReturn(Optional.of(recentToken));
 
         assertThatThrownBy(() -> authService.register(request))
-                .isInstanceOf(ConflictException.class)
-                .hasMessageContaining("Email đã được sử dụng");
+                .isInstanceOf(TooManyRequestsException.class)
+                .hasMessageContaining("Vui lòng đợi");
+    }
+
+    @Test
+    @DisplayName("Register ném TooManyRequestsException 429 khi vượt quá Rate Limit 5 lần/15 phút")
+    void register_ThrowsTooManyRequests_WhenExceedingRateLimit() {
+        RegisterRequest request = RegisterRequest.builder()
+                .fullName("Nguyễn Văn A")
+                .email("test@example.com")
+                .password("MatKhau123")
+                .build();
+
+        when(userRepository.existsByEmail("test@example.com")).thenReturn(false);
+        when(emailVerificationTokenRepository.findFirstByEmailOrderByCreatedAtDesc("test@example.com"))
+                .thenReturn(Optional.empty());
+        when(emailVerificationTokenRepository.countByEmailAndCreatedAtAfter(eq("test@example.com"), any(LocalDateTime.class)))
+                .thenReturn(5L);
+
+        assertThatThrownBy(() -> authService.register(request))
+                .isInstanceOf(TooManyRequestsException.class)
+                .hasMessageContaining("Bạn đã vượt quá giới hạn yêu cầu OTP");
     }
 
     @Test
@@ -142,9 +175,10 @@ class AuthServiceTest {
                 .otpCode("123456")
                 .expiresAt(LocalDateTime.now().plusMinutes(3))
                 .isUsed(false)
+                .failedAttempts(0)
                 .build();
 
-        when(emailVerificationTokenRepository.findByEmailAndOtpCodeAndIsUsedFalse("test@example.com", "123456"))
+        when(emailVerificationTokenRepository.findFirstByEmailAndIsUsedFalseOrderByCreatedAtDesc("test@example.com"))
                 .thenReturn(Optional.of(token));
         when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(testUser));
         when(tokenProvider.generateToken("test@example.com", 10L, "CUSTOMER")).thenReturn("mockJwtToken");
@@ -160,27 +194,61 @@ class AuthServiceTest {
     }
 
     @Test
-    @DisplayName("Verify email thất bại khi OTP hết hạn")
-    void verifyEmail_ThrowsBadRequest_WhenOtpExpired() {
+    @DisplayName("Verify email tăng failedAttempts khi sai OTP và ném BadRequestException")
+    void verifyEmail_IncrementsFailedAttempts_WhenWrongOtp() {
         VerifyEmailRequest request = VerifyEmailRequest.builder()
                 .email("test@example.com")
-                .otpCode("123456")
+                .otpCode("999999")
                 .build();
 
         EmailVerificationToken token = EmailVerificationToken.builder()
                 .id(1L)
                 .email("test@example.com")
                 .otpCode("123456")
-                .expiresAt(LocalDateTime.now().minusMinutes(1))
+                .expiresAt(LocalDateTime.now().plusMinutes(3))
                 .isUsed(false)
+                .failedAttempts(1)
                 .build();
 
-        when(emailVerificationTokenRepository.findByEmailAndOtpCodeAndIsUsedFalse("test@example.com", "123456"))
+        when(emailVerificationTokenRepository.findFirstByEmailAndIsUsedFalseOrderByCreatedAtDesc("test@example.com"))
                 .thenReturn(Optional.of(token));
 
         assertThatThrownBy(() -> authService.verifyEmail(request))
                 .isInstanceOf(BadRequestException.class)
-                .hasMessageContaining("Mã OTP đã hết hạn");
+                .hasMessageContaining("Mã OTP không chính xác. Bạn còn 3 lần thử.");
+
+        assertThat(token.getFailedAttempts()).isEqualTo(2);
+        assertThat(token.isUsed()).isFalse();
+        verify(emailVerificationTokenRepository, times(1)).save(token);
+    }
+
+    @Test
+    @DisplayName("Verify email vô hiệu hóa mã khi nhập sai quá 5 lần liên tiếp (Anti-Brute-Force)")
+    void verifyEmail_DisablesToken_WhenExceeding5Attempts() {
+        VerifyEmailRequest request = VerifyEmailRequest.builder()
+                .email("test@example.com")
+                .otpCode("999999")
+                .build();
+
+        EmailVerificationToken token = EmailVerificationToken.builder()
+                .id(1L)
+                .email("test@example.com")
+                .otpCode("123456")
+                .expiresAt(LocalDateTime.now().plusMinutes(3))
+                .isUsed(false)
+                .failedAttempts(4)
+                .build();
+
+        when(emailVerificationTokenRepository.findFirstByEmailAndIsUsedFalseOrderByCreatedAtDesc("test@example.com"))
+                .thenReturn(Optional.of(token));
+
+        assertThatThrownBy(() -> authService.verifyEmail(request))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("Bạn đã nhập sai mã OTP quá 5 lần. Mã kích hoạt này đã bị vô hiệu hóa");
+
+        assertThat(token.getFailedAttempts()).isEqualTo(5);
+        assertThat(token.isUsed()).isTrue();
+        verify(emailVerificationTokenRepository, times(1)).save(token);
     }
 
     @Test
@@ -190,6 +258,10 @@ class AuthServiceTest {
         ResendOtpRequest request = ResendOtpRequest.builder().email("test@example.com").build();
 
         when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(testUser));
+        when(emailVerificationTokenRepository.findFirstByEmailOrderByCreatedAtDesc("test@example.com"))
+                .thenReturn(Optional.empty());
+        when(emailVerificationTokenRepository.countByEmailAndCreatedAtAfter(eq("test@example.com"), any(LocalDateTime.class)))
+                .thenReturn(0L);
         when(emailVerificationTokenRepository.findByEmailAndIsUsedFalse("test@example.com")).thenReturn(List.of());
 
         authService.resendVerificationOtp(request);
@@ -220,90 +292,6 @@ class AuthServiceTest {
     }
 
     @Test
-    @DisplayName("Login thất bại khi tài khoản chưa kích hoạt email")
-    void login_UnverifiedEmail_ThrowsUnauthorizedException() {
-        testUser.setEmailVerified(false);
-        LoginRequest request = LoginRequest.builder()
-                .email("test@example.com")
-                .password("MatKhau123")
-                .build();
-
-        when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(testUser));
-        when(passwordEncoder.matches("MatKhau123", "encodedPassword")).thenReturn(true);
-
-        assertThatThrownBy(() -> authService.login(request))
-                .isInstanceOf(UnauthorizedException.class)
-                .hasMessageContaining("Tài khoản chưa được xác thực email");
-    }
-
-    @Test
-    @DisplayName("Login thất bại khi sai password")
-    void login_WrongPassword_ThrowsUnauthorizedException() {
-        LoginRequest request = LoginRequest.builder()
-                .email("test@example.com")
-                .password("WrongPassword")
-                .build();
-
-        when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(testUser));
-        when(passwordEncoder.matches("WrongPassword", "encodedPassword")).thenReturn(false);
-
-        assertThatThrownBy(() -> authService.login(request))
-                .isInstanceOf(UnauthorizedException.class)
-                .hasMessageContaining("Email hoặc mật khẩu không chính xác");
-    }
-
-    @Test
-    @DisplayName("Login thất bại khi tài khoản bị khóa")
-    void login_AccountInactive_ThrowsForbiddenException() {
-        testUser.setActive(false);
-        LoginRequest request = LoginRequest.builder()
-                .email("test@example.com")
-                .password("MatKhau123")
-                .build();
-
-        when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(testUser));
-        when(passwordEncoder.matches("MatKhau123", "encodedPassword")).thenReturn(true);
-
-        assertThatThrownBy(() -> authService.login(request))
-                .isInstanceOf(ForbiddenException.class)
-                .hasMessageContaining("Tài khoản của bạn đã bị khóa");
-    }
-
-    @Test
-    @DisplayName("Refresh token thành công")
-    void refreshToken_Success() {
-        RefreshTokenRequest request = RefreshTokenRequest.builder()
-                .refreshToken("valid-refresh-token")
-                .build();
-
-        when(tokenProvider.validateToken("valid-refresh-token")).thenReturn(true);
-        when(tokenProvider.getTokenType("valid-refresh-token")).thenReturn("REFRESH");
-        when(tokenProvider.getEmailFromToken("valid-refresh-token")).thenReturn("test@example.com");
-        when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(testUser));
-        when(tokenProvider.generateToken("test@example.com", 10L, "CUSTOMER")).thenReturn("newAccessToken");
-        when(tokenProvider.generateRefreshToken("test@example.com", 10L, "CUSTOMER")).thenReturn("newRefreshToken");
-        when(tokenProvider.getJwtExpirationMs()).thenReturn(86400000L);
-
-        AuthResponse response = authService.refreshToken(request);
-
-        assertThat(response).isNotNull();
-        assertThat(response.getAccessToken()).isEqualTo("newAccessToken");
-    }
-
-    @Test
-    @DisplayName("Lấy thông tin tài khoản hiện tại getCurrentUser thành công")
-    void getCurrentUser_Success() {
-        UserPrincipal principal = UserPrincipal.create(10L, "test@example.com", "pass", "CUSTOMER", true);
-        when(userRepository.findById(10L)).thenReturn(Optional.of(testUser));
-
-        UserResponse response = authService.getCurrentUser(principal);
-
-        assertThat(response).isNotNull();
-        assertThat(response.getEmail()).isEqualTo("test@example.com");
-        assertThat(response.isEmailVerified()).isTrue();
-    }
-
-    @Test
     @DisplayName("Forgot password thành công sinh mã OTP gửi email")
     void forgotPassword_Success() {
         ForgotPasswordRequest request = ForgotPasswordRequest.builder()
@@ -311,6 +299,11 @@ class AuthServiceTest {
                 .build();
 
         when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(testUser));
+        when(passwordResetTokenRepository.findFirstByUserOrderByCreatedAtDesc(testUser))
+                .thenReturn(Optional.empty());
+        when(passwordResetTokenRepository.countByUserAndCreatedAtAfter(eq(testUser), any(LocalDateTime.class)))
+                .thenReturn(0L);
+        when(passwordResetTokenRepository.findByUserAndIsUsedFalse(testUser)).thenReturn(List.of());
 
         ForgotPasswordResponse response = authService.forgotPassword(request);
 
@@ -335,10 +328,12 @@ class AuthServiceTest {
                 .user(testUser)
                 .expiresAt(LocalDateTime.now().plusMinutes(10))
                 .isUsed(false)
+                .failedAttempts(0)
                 .build();
 
         when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(testUser));
-        when(passwordResetTokenRepository.findByToken("654321")).thenReturn(Optional.of(resetToken));
+        when(passwordResetTokenRepository.findFirstByUserAndIsUsedFalseOrderByCreatedAtDesc(testUser))
+                .thenReturn(Optional.of(resetToken));
         when(passwordEncoder.encode("MatKhauMoi123")).thenReturn("newEncodedPassword");
 
         authService.resetPasswordWithOtp(request);

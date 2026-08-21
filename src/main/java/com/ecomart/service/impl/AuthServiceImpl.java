@@ -24,8 +24,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.security.SecureRandom;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -41,6 +43,10 @@ public class AuthServiceImpl implements AuthService {
     private final EmailService emailService;
 
     private static final SecureRandom RANDOM = new SecureRandom();
+    private static final int MAX_FAILED_ATTEMPTS = 5;
+    private static final int COOLDOWN_SECONDS = 60;
+    private static final int RATE_LIMIT_WINDOW_MINUTES = 15;
+    private static final int MAX_REQUESTS_PER_WINDOW = 5;
 
     @Override
     @Transactional
@@ -49,6 +55,9 @@ public class AuthServiceImpl implements AuthService {
         if (userRepository.existsByEmail(normalizedEmail)) {
             throw new ConflictException("Email đã được sử dụng.");
         }
+
+        // Kiểm tra Cooldown 60s & Rate Limit 5/15p trước khi gửi mail
+        checkEmailVerificationCooldownAndRateLimit(normalizedEmail);
 
         Role customerRole = roleRepository.findByName("CUSTOMER")
                 .orElseThrow(() -> new ResourceNotFoundException("Role CUSTOMER không tồn tại trên hệ thống."));
@@ -72,6 +81,7 @@ public class AuthServiceImpl implements AuthService {
                 .otpCode(otpCode)
                 .expiresAt(LocalDateTime.now().plusMinutes(5))
                 .isUsed(false)
+                .failedAttempts(0)
                 .build();
         emailVerificationTokenRepository.save(verificationToken);
 
@@ -90,11 +100,24 @@ public class AuthServiceImpl implements AuthService {
     public AuthResponse verifyEmail(VerifyEmailRequest request) {
         String normalizedEmail = request.getEmail().trim().toLowerCase();
         EmailVerificationToken token = emailVerificationTokenRepository
-                .findByEmailAndOtpCodeAndIsUsedFalse(normalizedEmail, request.getOtpCode())
-                .orElseThrow(() -> new BadRequestException("Mã OTP không hợp lệ hoặc đã được sử dụng."));
+                .findFirstByEmailAndIsUsedFalseOrderByCreatedAtDesc(normalizedEmail)
+                .orElseThrow(() -> new BadRequestException("Không tìm thấy mã OTP kích hoạt nào đang hoạt động. Vui lòng yêu cầu gửi lại mã mới."));
 
         if (token.getExpiresAt().isBefore(LocalDateTime.now())) {
             throw new BadRequestException("Mã OTP đã hết hạn. Vui lòng yêu cầu gửi lại mã mới.");
+        }
+
+        // Chống Brute-force: Kiểm tra mã OTP
+        if (!token.getOtpCode().equals(request.getOtpCode().trim())) {
+            token.setFailedAttempts(token.getFailedAttempts() + 1);
+            if (token.getFailedAttempts() >= MAX_FAILED_ATTEMPTS) {
+                token.setUsed(true);
+                emailVerificationTokenRepository.save(token);
+                throw new BadRequestException("Bạn đã nhập sai mã OTP quá " + MAX_FAILED_ATTEMPTS + " lần. Mã kích hoạt này đã bị vô hiệu hóa, vui lòng yêu cầu gửi lại mã mới.");
+            }
+            emailVerificationTokenRepository.save(token);
+            int remaining = MAX_FAILED_ATTEMPTS - token.getFailedAttempts();
+            throw new BadRequestException("Mã OTP không chính xác. Bạn còn " + remaining + " lần thử.");
         }
 
         User user = userRepository.findByEmail(normalizedEmail)
@@ -129,6 +152,9 @@ public class AuthServiceImpl implements AuthService {
             throw new BadRequestException("Tài khoản này đã được xác thực email trước đó.");
         }
 
+        // Kiểm tra Cooldown 60s & Rate Limit 5/15p
+        checkEmailVerificationCooldownAndRateLimit(normalizedEmail);
+
         // Hủy các OTP cũ chưa sử dụng
         List<EmailVerificationToken> oldTokens = emailVerificationTokenRepository.findByEmailAndIsUsedFalse(normalizedEmail);
         for (EmailVerificationToken oldToken : oldTokens) {
@@ -143,6 +169,7 @@ public class AuthServiceImpl implements AuthService {
                 .otpCode(otpCode)
                 .expiresAt(LocalDateTime.now().plusMinutes(5))
                 .isUsed(false)
+                .failedAttempts(0)
                 .build();
         emailVerificationTokenRepository.save(newToken);
 
@@ -224,12 +251,23 @@ public class AuthServiceImpl implements AuthService {
         User user = userRepository.findByEmail(normalizedEmail)
                 .orElseThrow(() -> new ResourceNotFoundException("Tài khoản với email này không tồn tại."));
 
+        // Kiểm tra Cooldown 60s & Rate Limit 5/15p
+        checkPasswordResetCooldownAndRateLimit(user);
+
+        // Hủy các token reset mật khẩu cũ chưa dùng
+        List<PasswordResetToken> oldTokens = passwordResetTokenRepository.findByUserAndIsUsedFalse(user);
+        for (PasswordResetToken oldToken : oldTokens) {
+            oldToken.setUsed(true);
+        }
+        passwordResetTokenRepository.saveAll(oldTokens);
+
         String resetOtp = generateOtpCode();
         PasswordResetToken passwordResetToken = PasswordResetToken.builder()
                 .user(user)
                 .token(resetOtp)
                 .expiresAt(LocalDateTime.now().plusMinutes(15))
                 .isUsed(false)
+                .failedAttempts(0)
                 .build();
 
         passwordResetTokenRepository.save(passwordResetToken);
@@ -249,19 +287,25 @@ public class AuthServiceImpl implements AuthService {
         User user = userRepository.findByEmail(normalizedEmail)
                 .orElseThrow(() -> new ResourceNotFoundException("Tài khoản không tồn tại."));
 
-        PasswordResetToken resetToken = passwordResetTokenRepository.findByToken(request.getOtpCode())
-                .orElseThrow(() -> new BadRequestException("Mã OTP đặt lại mật khẩu không hợp lệ."));
-
-        if (!resetToken.getUser().getId().equals(user.getId())) {
-            throw new BadRequestException("Mã OTP không thuộc tài khoản này.");
-        }
-
-        if (resetToken.isUsed()) {
-            throw new BadRequestException("Mã OTP đặt lại mật khẩu đã được sử dụng.");
-        }
+        PasswordResetToken resetToken = passwordResetTokenRepository
+                .findFirstByUserAndIsUsedFalseOrderByCreatedAtDesc(user)
+                .orElseThrow(() -> new BadRequestException("Không tìm thấy mã OTP đặt lại mật khẩu nào đang hoạt động. Vui lòng yêu cầu gửi lại mã mới."));
 
         if (resetToken.getExpiresAt().isBefore(LocalDateTime.now())) {
-            throw new BadRequestException("Mã OTP đặt lại mật khẩu đã hết hạn.");
+            throw new BadRequestException("Mã OTP đặt lại mật khẩu đã hết hạn. Vui lòng yêu cầu gửi lại mã mới.");
+        }
+
+        // Chống Brute-force: Kiểm tra mã OTP
+        if (!resetToken.getToken().equals(request.getOtpCode().trim())) {
+            resetToken.setFailedAttempts(resetToken.getFailedAttempts() + 1);
+            if (resetToken.getFailedAttempts() >= MAX_FAILED_ATTEMPTS) {
+                resetToken.setUsed(true);
+                passwordResetTokenRepository.save(resetToken);
+                throw new BadRequestException("Bạn đã nhập sai mã OTP quá " + MAX_FAILED_ATTEMPTS + " lần. Mã đặt lại mật khẩu này đã bị vô hiệu hóa, vui lòng yêu cầu gửi lại mã mới.");
+            }
+            passwordResetTokenRepository.save(resetToken);
+            int remaining = MAX_FAILED_ATTEMPTS - resetToken.getFailedAttempts();
+            throw new BadRequestException("Mã OTP không chính xác. Bạn còn " + remaining + " lần thử.");
         }
 
         user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
@@ -308,6 +352,48 @@ public class AuthServiceImpl implements AuthService {
         }
 
         return mapToUserResponse(user);
+    }
+
+    private void checkEmailVerificationCooldownAndRateLimit(String email) {
+        LocalDateTime now = LocalDateTime.now();
+
+        // 1. Kiểm tra Cooldown 60 giây
+        Optional<EmailVerificationToken> latestTokenOpt = emailVerificationTokenRepository.findFirstByEmailOrderByCreatedAtDesc(email);
+        if (latestTokenOpt.isPresent()) {
+            LocalDateTime createdAt = latestTokenOpt.get().getCreatedAt();
+            if (createdAt != null && createdAt.isAfter(now.minusSeconds(COOLDOWN_SECONDS))) {
+                long elapsedSeconds = Duration.between(createdAt, now).getSeconds();
+                long waitSeconds = Math.max(1, COOLDOWN_SECONDS - elapsedSeconds);
+                throw new TooManyRequestsException("Vui lòng đợi " + waitSeconds + " giây trước khi yêu cầu mã OTP kích hoạt tiếp theo.");
+            }
+        }
+
+        // 2. Kiểm tra Rate Limit (Tối đa 5 lần trong 15 phút)
+        long recentRequestsCount = emailVerificationTokenRepository.countByEmailAndCreatedAtAfter(email, now.minusMinutes(RATE_LIMIT_WINDOW_MINUTES));
+        if (recentRequestsCount >= MAX_REQUESTS_PER_WINDOW) {
+            throw new TooManyRequestsException("Bạn đã vượt quá giới hạn yêu cầu OTP kích hoạt (tối đa " + MAX_REQUESTS_PER_WINDOW + " lần trong " + RATE_LIMIT_WINDOW_MINUTES + " phút). Vui lòng thử lại sau.");
+        }
+    }
+
+    private void checkPasswordResetCooldownAndRateLimit(User user) {
+        LocalDateTime now = LocalDateTime.now();
+
+        // 1. Kiểm tra Cooldown 60 giây
+        Optional<PasswordResetToken> latestTokenOpt = passwordResetTokenRepository.findFirstByUserOrderByCreatedAtDesc(user);
+        if (latestTokenOpt.isPresent()) {
+            LocalDateTime createdAt = latestTokenOpt.get().getCreatedAt();
+            if (createdAt != null && createdAt.isAfter(now.minusSeconds(COOLDOWN_SECONDS))) {
+                long elapsedSeconds = Duration.between(createdAt, now).getSeconds();
+                long waitSeconds = Math.max(1, COOLDOWN_SECONDS - elapsedSeconds);
+                throw new TooManyRequestsException("Vui lòng đợi " + waitSeconds + " giây trước khi yêu cầu mã OTP đặt lại mật khẩu tiếp theo.");
+            }
+        }
+
+        // 2. Kiểm tra Rate Limit (Tối đa 5 lần trong 15 phút)
+        long recentRequestsCount = passwordResetTokenRepository.countByUserAndCreatedAtAfter(user, now.minusMinutes(RATE_LIMIT_WINDOW_MINUTES));
+        if (recentRequestsCount >= MAX_REQUESTS_PER_WINDOW) {
+            throw new TooManyRequestsException("Bạn đã vượt quá giới hạn yêu cầu OTP đặt lại mật khẩu (tối đa " + MAX_REQUESTS_PER_WINDOW + " lần trong " + RATE_LIMIT_WINDOW_MINUTES + " phút). Vui lòng thử lại sau.");
+        }
     }
 
     private String generateOtpCode() {

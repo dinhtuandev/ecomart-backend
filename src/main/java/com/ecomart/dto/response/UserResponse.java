@@ -20,5 +20,8 @@ public class UserResponse {
     @JsonProperty("isActive")
     private boolean isActive;
 
+    @JsonProperty("isEmailVerified")
+    private boolean isEmailVerified;
+
     private LocalDateTime createdAt;
 }

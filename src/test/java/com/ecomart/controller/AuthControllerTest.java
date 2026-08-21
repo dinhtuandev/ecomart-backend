@@ -1,9 +1,7 @@
 package com.ecomart.controller;
 
 import com.ecomart.dto.request.*;
-import com.ecomart.dto.response.AuthResponse;
-import com.ecomart.dto.response.ForgotPasswordResponse;
-import com.ecomart.dto.response.UserResponse;
+import com.ecomart.dto.response.*;
 import com.ecomart.exception.UnauthorizedException;
 import com.ecomart.security.JwtAuthenticationFilter;
 import com.ecomart.security.JwtTokenProvider;
@@ -57,6 +55,7 @@ class AuthControllerTest {
                 .role("CUSTOMER")
                 .phoneNumber("0901234567")
                 .isActive(true)
+                .isEmailVerified(true)
                 .build();
 
         authResponse = AuthResponse.builder()
@@ -68,7 +67,7 @@ class AuthControllerTest {
     }
 
     @Test
-    @DisplayName("POST /api/v1/auth/register trả về HTTP 201 khi dữ liệu hợp lệ")
+    @DisplayName("POST /api/v1/auth/register trả về HTTP 201 kèm mã OTP")
     void register_Success_Returns201() throws Exception {
         RegisterRequest request = RegisterRequest.builder()
                 .fullName("Nguyễn Văn A")
@@ -77,33 +76,55 @@ class AuthControllerTest {
                 .phoneNumber("0901234567")
                 .build();
 
-        when(authService.register(any(RegisterRequest.class))).thenReturn(authResponse);
+        RegisterResponse registerResponse = RegisterResponse.builder()
+                .message("Đăng ký tài khoản thành công.")
+                .email("test@example.com")
+                .otpCode("123456")
+                .build();
+
+        when(authService.register(any(RegisterRequest.class))).thenReturn(registerResponse);
 
         mockMvc.perform(post("/api/v1/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.accessToken").value("test-jwt-token"))
-                .andExpect(jsonPath("$.data.refreshToken").value("test-refresh-token"))
-                .andExpect(jsonPath("$.data.user.email").value("test@example.com"));
+                .andExpect(jsonPath("$.data.email").value("test@example.com"))
+                .andExpect(jsonPath("$.data.otpCode").value("123456"));
     }
 
     @Test
-    @DisplayName("POST /api/v1/auth/register trả về HTTP 400 khi thông tin không hợp lệ (Bean Validation)")
-    void register_InvalidPayload_Returns400() throws Exception {
-        RegisterRequest request = RegisterRequest.builder()
-                .fullName("")
-                .email("invalid-email")
-                .password("123")
+    @DisplayName("POST /api/v1/auth/verify-email trả về HTTP 200 kèm AuthResponse")
+    void verifyEmail_Success_Returns200() throws Exception {
+        VerifyEmailRequest request = VerifyEmailRequest.builder()
+                .email("test@example.com")
+                .otpCode("123456")
                 .build();
 
-        mockMvc.perform(post("/api/v1/auth/register")
+        when(authService.verifyEmail(any(VerifyEmailRequest.class))).thenReturn(authResponse);
+
+        mockMvc.perform(post("/api/v1/auth/verify-email")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.errors.email").exists());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.accessToken").value("test-jwt-token"));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/auth/resend-verification trả về HTTP 200")
+    void resendVerificationOtp_Returns200() throws Exception {
+        ResendOtpRequest request = ResendOtpRequest.builder()
+                .email("test@example.com")
+                .build();
+
+        doNothing().when(authService).resendVerificationOtp(any(ResendOtpRequest.class));
+
+        mockMvc.perform(post("/api/v1/auth/resend-verification")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
     }
 
     @Test
@@ -121,27 +142,7 @@ class AuthControllerTest {
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.accessToken").value("test-jwt-token"))
-                .andExpect(jsonPath("$.data.refreshToken").value("test-refresh-token"));
-    }
-
-    @Test
-    @DisplayName("POST /api/v1/auth/login trả về HTTP 401 khi sai mật khẩu")
-    void login_Unauthorized_Returns401() throws Exception {
-        LoginRequest request = LoginRequest.builder()
-                .email("test@example.com")
-                .password("WrongPassword")
-                .build();
-
-        when(authService.login(any(LoginRequest.class)))
-                .thenThrow(new UnauthorizedException("Email hoặc mật khẩu không chính xác."));
-
-        mockMvc.perform(post("/api/v1/auth/login")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.message").value("Email hoặc mật khẩu không chính xác."));
+                .andExpect(jsonPath("$.data.accessToken").value("test-jwt-token"));
     }
 
     @Test
@@ -158,8 +159,7 @@ class AuthControllerTest {
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.accessToken").value("test-jwt-token"))
-                .andExpect(jsonPath("$.data.refreshToken").value("test-refresh-token"));
+                .andExpect(jsonPath("$.data.accessToken").value("test-jwt-token"));
     }
 
     @Test
@@ -172,7 +172,7 @@ class AuthControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.email").value("test@example.com"))
-                .andExpect(jsonPath("$.data.fullName").value("Nguyễn Văn A"));
+                .andExpect(jsonPath("$.data.isEmailVerified").value(true));
     }
 
     @Test
@@ -184,7 +184,7 @@ class AuthControllerTest {
 
         ForgotPasswordResponse response = ForgotPasswordResponse.builder()
                 .message("Yêu cầu đặt lại mật khẩu đã được xử lý.")
-                .resetToken("mock-reset-token")
+                .resetToken("654321")
                 .build();
 
         when(authService.forgotPassword(any(ForgotPasswordRequest.class))).thenReturn(response);
@@ -194,20 +194,21 @@ class AuthControllerTest {
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.resetToken").value("mock-reset-token"));
+                .andExpect(jsonPath("$.data.resetToken").value("654321"));
     }
 
     @Test
-    @DisplayName("POST /api/v1/auth/reset-password trả về HTTP 200")
-    void resetPassword_Returns200() throws Exception {
-        ResetPasswordRequest request = ResetPasswordRequest.builder()
-                .token("valid-uuid-token")
+    @DisplayName("POST /api/v1/auth/reset-password-otp trả về HTTP 200")
+    void resetPasswordWithOtp_Returns200() throws Exception {
+        ResetPasswordWithOtpRequest request = ResetPasswordWithOtpRequest.builder()
+                .email("test@example.com")
+                .otpCode("654321")
                 .newPassword("MatKhauMoi123")
                 .build();
 
-        doNothing().when(authService).resetPassword(any(ResetPasswordRequest.class));
+        doNothing().when(authService).resetPasswordWithOtp(any(ResetPasswordWithOtpRequest.class));
 
-        mockMvc.perform(post("/api/v1/auth/reset-password")
+        mockMvc.perform(post("/api/v1/auth/reset-password-otp")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())

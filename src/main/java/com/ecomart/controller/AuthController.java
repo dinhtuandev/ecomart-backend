@@ -1,10 +1,7 @@
 package com.ecomart.controller;
 
 import com.ecomart.dto.request.*;
-import com.ecomart.dto.response.ApiResponse;
-import com.ecomart.dto.response.AuthResponse;
-import com.ecomart.dto.response.ForgotPasswordResponse;
-import com.ecomart.dto.response.UserResponse;
+import com.ecomart.dto.response.*;
 import com.ecomart.security.UserPrincipal;
 import com.ecomart.service.AuthService;
 import jakarta.validation.Valid;
@@ -22,10 +19,22 @@ public class AuthController {
     private final AuthService authService;
 
     @PostMapping("/register")
-    public ResponseEntity<ApiResponse<AuthResponse>> register(@Valid @RequestBody RegisterRequest request) {
-        AuthResponse response = authService.register(request);
+    public ResponseEntity<ApiResponse<RegisterResponse>> register(@Valid @RequestBody RegisterRequest request) {
+        RegisterResponse response = authService.register(request);
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResponse.success("Đăng ký tài khoản thành công.", response));
+                .body(ApiResponse.success("Đăng ký tài khoản thành công. Vui lòng kiểm tra email để lấy mã OTP kích hoạt.", response));
+    }
+
+    @PostMapping("/verify-email")
+    public ResponseEntity<ApiResponse<AuthResponse>> verifyEmail(@Valid @RequestBody VerifyEmailRequest request) {
+        AuthResponse response = authService.verifyEmail(request);
+        return ResponseEntity.ok(ApiResponse.success("Xác thực email và kích hoạt tài khoản thành công.", response));
+    }
+
+    @PostMapping("/resend-verification")
+    public ResponseEntity<ApiResponse<Void>> resendVerificationOtp(@Valid @RequestBody ResendOtpRequest request) {
+        authService.resendVerificationOtp(request);
+        return ResponseEntity.ok(ApiResponse.success("Mã OTP kích hoạt mới đã được gửi về email của bạn.", null));
     }
 
     @PostMapping("/login")
@@ -49,7 +58,13 @@ public class AuthController {
     @PostMapping("/forgot-password")
     public ResponseEntity<ApiResponse<ForgotPasswordResponse>> forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {
         ForgotPasswordResponse response = authService.forgotPassword(request);
-        return ResponseEntity.ok(ApiResponse.success("Yêu cầu đặt lại mật khẩu đã được xử lý.", response));
+        return ResponseEntity.ok(ApiResponse.success("Yêu cầu đặt lại mật khẩu đã được xử lý. Vui lòng kiểm tra mã OTP gửi về email.", response));
+    }
+
+    @PostMapping("/reset-password-otp")
+    public ResponseEntity<ApiResponse<Void>> resetPasswordWithOtp(@Valid @RequestBody ResetPasswordWithOtpRequest request) {
+        authService.resetPasswordWithOtp(request);
+        return ResponseEntity.ok(ApiResponse.success("Đặt lại mật khẩu thành công.", null));
     }
 
     @PostMapping("/reset-password")

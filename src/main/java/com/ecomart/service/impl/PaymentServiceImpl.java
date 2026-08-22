@@ -79,10 +79,15 @@ public class PaymentServiceImpl implements PaymentService {
 
         String encodedDes = URLEncoder.encode(order.getOrderCode(), StandardCharsets.UTF_8);
         String amountStr = order.getTotalAmount().toBigInteger().toString();
+        String acc = (sepay.getAccountNumber() != null && !sepay.getAccountNumber().isBlank()) ? sepay.getAccountNumber() : "109876543210";
+        String bank = (sepay.getBank() != null && !sepay.getBank().isBlank()) ? sepay.getBank() : "970415";
+        String template = (sepay.getQrUrlTemplate() != null && !sepay.getQrUrlTemplate().isBlank())
+                ? sepay.getQrUrlTemplate()
+                : "https://img.vietqr.io/image/{bank}-{acc}-compact2.png?amount={amount}&addInfo={des}";
 
-        return sepay.getQrUrlTemplate()
-                .replace("{acc}", sepay.getAccountNumber())
-                .replace("{bank}", sepay.getBank())
+        return template
+                .replace("{acc}", acc)
+                .replace("{bank}", bank)
                 .replace("{amount}", amountStr)
                 .replace("{des}", encodedDes);
     }

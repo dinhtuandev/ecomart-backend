@@ -40,6 +40,7 @@ public class DataSeeder implements CommandLineRunner {
                     .passwordHash(passwordEncoder.encode("Admin123!"))
                     .phoneNumber("0900000000")
                     .isActive(true)
+                    .isEmailVerified(true)
                     .role(adminRole)
                     .build();
 

@@ -19,6 +19,7 @@ import com.ecomart.util.VNPayUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -33,6 +34,7 @@ import java.util.regex.Pattern;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class PaymentServiceImpl implements PaymentService {
 
     public static final Pattern ORDER_CODE_PATTERN = Pattern.compile("EM-\\d{8}-[A-Z0-9]{5}");
@@ -216,9 +218,26 @@ public class PaymentServiceImpl implements PaymentService {
         PaymentConfig.SePayProperties sepay = paymentConfig.getSepay();
 
         // 1. Verify Authorization Header
-        String expectedHeader = "Apikey " + sepay.getApiKey();
-        if (authHeader == null || !authHeader.trim().equals(expectedHeader)) {
-            throw new UnauthorizedException("API Key của SePay không hợp lệ");
+        String configuredApiKey = sepay.getApiKey();
+        if (configuredApiKey != null && !configuredApiKey.isBlank()) {
+            boolean isValid = false;
+            if (authHeader != null && !authHeader.isBlank()) {
+                String trimmed = authHeader.trim();
+                if (trimmed.equalsIgnoreCase("Apikey " + configuredApiKey)
+                        || trimmed.equalsIgnoreCase("Bearer " + configuredApiKey)
+                        || trimmed.equalsIgnoreCase(configuredApiKey)) {
+                    isValid = true;
+                } else if (trimmed.regionMatches(true, 0, "Apikey ", 0, 7) || trimmed.regionMatches(true, 0, "Bearer ", 0, 7)) {
+                    String token = trimmed.substring(trimmed.indexOf(' ') + 1).trim();
+                    if (token.equalsIgnoreCase(configuredApiKey)) {
+                        isValid = true;
+                    }
+                }
+            }
+            if (!isValid) {
+                log.warn("SePay Webhook 401 Unauthorized: Received authHeader='{}', Expected configuredApiKey='{}'", authHeader, configuredApiKey);
+                throw new UnauthorizedException("API Key của SePay không hợp lệ");
+            }
         }
 
         // 2. Validate referenceCode
@@ -299,6 +318,7 @@ public class PaymentServiceImpl implements PaymentService {
 
         orderRepository.save(order);
         paymentTransactionRepository.save(tx);
+        log.info("SePay Webhook: Successfully processed payment for Order '{}', Amount: {}", orderCode, order.getTotalAmount());
     }
 
     private String extractOrderCodeFromPaymentRef(String paymentRef) {

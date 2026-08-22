@@ -19,7 +19,7 @@ public class PaymentController {
 
     private final PaymentService paymentService;
 
-    @PostMapping("/vnpay/ipn")
+    @RequestMapping(value = "/vnpay/ipn", method = {RequestMethod.GET, RequestMethod.POST})
     public ResponseEntity<VNPayIpnResponse> handleVNPayIpn(@RequestParam Map<String, String> vnpParams) {
         VNPayIpnResponse response = paymentService.processVNPayIpn(vnpParams);
         return ResponseEntity.ok(response);
@@ -34,10 +34,18 @@ public class PaymentController {
     @PostMapping("/sepay/webhook")
     public ResponseEntity<ApiResponse<Void>> handleSePayWebhook(
             @RequestHeader(value = "Authorization", required = false) String authHeader,
+            @RequestHeader(value = "X-Api-Key", required = false) String xApiKey,
+            @RequestHeader(value = "x-api-key", required = false) String xApiKeyLower,
             @RequestBody SePayWebhookRequest request
     ) {
+        String effectiveAuth = authHeader;
+        if ((effectiveAuth == null || effectiveAuth.isBlank()) && xApiKey != null) {
+            effectiveAuth = xApiKey;
+        } else if ((effectiveAuth == null || effectiveAuth.isBlank()) && xApiKeyLower != null) {
+            effectiveAuth = xApiKeyLower;
+        }
         try {
-            paymentService.processSePayWebhook(authHeader, request);
+            paymentService.processSePayWebhook(effectiveAuth, request);
         } catch (DataIntegrityViolationException ex) {
             // Idempotent graceful fallback for concurrent database duplicate constraint collision
             return ResponseEntity.ok(ApiResponse.success("Giao dịch đã được xử lý trước đó.", null));
